@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"slices"
+	"sync"
 
 	"github.com/NateScarlet/gqlgen-batching/internal/iterator"
 
@@ -61,6 +62,7 @@ func (h POST) Do(w http.ResponseWriter, r *http.Request, exec graphql.GraphExecu
 	}
 
 	var encoder *json.Encoder
+	var writeHeaderOnce sync.Once
 	for response := range iterator.Parallel(ctx, h.ConcurrentLimitPerRequest, slices.Values(paramsCollection), func(params *graphql.RawParams) *graphql.Response {
 		params.Headers = r.Header
 		params.ReadTime = graphql.TraceTiming{
@@ -69,12 +71,16 @@ func (h POST) Do(w http.ResponseWriter, r *http.Request, exec graphql.GraphExecu
 		}
 		rc, OpErr := exec.CreateOperationContext(ctx, params)
 		if OpErr != nil {
-			w.WriteHeader(statusFor(OpErr))
+			writeHeaderOnce.Do(func() {
+				// 只有发送第一个响应前的错误影响状态码
+				w.WriteHeader(statusFor(OpErr))
+			})
 			return exec.DispatchError(graphql.WithOperationContext(ctx, rc), OpErr)
 		}
 		responseHandler, ctx := exec.DispatchOperation(ctx, rc)
 		return responseHandler(ctx)
 	}) {
+		writeHeaderOnce.Do(func() {}) // 将要写入响应体了，无法再修改 header
 		if encoder == nil {
 			encoder = json.NewEncoder(w)
 			w.Write([]byte("["))
