@@ -10,12 +10,9 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
-func writeJSON[T *graphql.Response | []*graphql.Response](w io.Writer, response T) {
+func writeJSON[T *graphql.Response | []*graphql.Response](w io.Writer, response T) error {
 	var encoder = json.NewEncoder(w)
-	var err = encoder.Encode(response)
-	if err != nil {
-		panic(err)
-	}
+	return encoder.Encode(response)
 }
 
 func readJSON(r io.Reader, val interface{}) error {
